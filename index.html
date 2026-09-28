@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Гипотеза Коллатца — визуализация</title>
 <style>
-  :root { --theme: light; }
-  .viz-root {
+  /* Переменные темы объявлены на :root (html), чтобы и фон страницы (body),
+     и весь контент наследовали актуальные значения при переключении темы. */
+  :root {
     color-scheme: light;
     --surface-1:   #fcfcfb;
     --page:        #f9f9f7;
@@ -20,7 +21,7 @@
     --even:        #2a78d6;   /* чётное — деление на 2 */
   }
   @media (prefers-color-scheme: dark) {
-    :root:where(:not([data-theme="light"])) .viz-root {
+    :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
       --surface-1: #1a1a19;
       --page:      #0d0d0d;
@@ -34,7 +35,7 @@
       --even:      #3987e5;
     }
   }
-  :root[data-theme="dark"] .viz-root {
+  :root[data-theme="dark"] {
     color-scheme: dark;
     --surface-1: #1a1a19;
     --page:      #0d0d0d;
@@ -216,8 +217,6 @@
 
 <script>
 (function () {
-  const root = document.getElementById('root');
-
   /* ---------- тема ---------- */
   const themeBtn = document.getElementById('themeBtn');
   // CSS-селекторы тем смотрят на data-theme элемента <html> (:root),
