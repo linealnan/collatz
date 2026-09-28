@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Гипотеза Коллатца — визуализация</title>
+<style>
+  :root { --theme: light; }
+  .viz-root {
+    color-scheme: light;
+    --surface-1:   #fcfcfb;
+    --page:        #f9f9f7;
+    --ink:         #0b0b0b;
+    --ink-2:       #52514e;
+    --muted:       #898781;
+    --grid:        #e1e0d9;
+    --baseline:    #c3c2b7;
+    --border:      rgba(11,11,11,0.10);
+    --odd:         #eb6834;   /* нечётное — 3n+1 */
+    --even:        #2a78d6;   /* чётное — деление на 2 */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page:      #0d0d0d;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --muted:     #898781;
+      --grid:      #2c2c2a;
+      --baseline:  #383835;
+      --border:    rgba(255,255,255,0.10);
+      --odd:       #d95926;
+      --even:      #3987e5;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page:      #0d0d0d;
+    --ink:       #ffffff;
+    --ink-2:     #c3c2b7;
+    --muted:     #898781;
+    --grid:      #2c2c2a;
+    --baseline:  #383835;
+    --border:    rgba(255,255,255,0.10);
+    --odd:       #d95926;
+    --even:      #3987e5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.45;
+  }
+  .viz-root {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  h1 { font-size: 22px; font-weight: 650; margin: 0; }
+  .sub { color: var(--ink-2); font-size: 14px; margin-top: 4px; max-width: 640px; }
+  .theme-toggle {
+    background: var(--surface-1); color: var(--ink-2);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 12px; font-size: 13px; cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--ink); }
+
+  .controls {
+    display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+    margin: 20px 0 18px; padding: 14px; background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 12px;
+  }
+  .controls label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+  .controls input[type=number] {
+    font: inherit; color: var(--ink); background: var(--page);
+    border: 1px solid var(--baseline); border-radius: 8px; padding: 8px 10px; width: 160px;
+  }
+  .controls input[type=number]:focus { outline: 2px solid var(--even); outline-offset: 1px; border-color: transparent; }
+  .btn {
+    font: inherit; font-size: 14px; color: #fff; background: var(--even);
+    border: none; border-radius: 8px; padding: 9px 18px; cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .hint { font-size: 12px; color: var(--muted); }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .stat { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  .panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 14px 10px; margin-bottom: 18px; }
+  .panel h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; }
+  .panel .note { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+
+  .svg-wrap { position: relative; }
+  svg { display: block; width: 100%; height: auto; }
+  .axis text { font-size: 12px; fill: var(--muted); }
+  .axis line, .axis path { stroke: var(--baseline); }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .axis-label { fill: var(--ink-2); font-size: 12.5px; }
+
+  /* легенда / цветовая шкала */
+  .scalebar { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .scale-label { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+  .scale-track {
+    flex: 1; height: 10px; border-radius: 6px;
+    background: linear-gradient(90deg,
+      #cde2fb, #b7d3f6, #9ec5f4, #86b6ef, #6da7ec, #5598e7,
+      #3987e5, #2a78d6, #256abf, #1c5cab, #184f95, #0d366b);
+  }
+  .scale-min, .scale-max { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* тултип */
+  .tooltip {
+    position: absolute; pointer-events: none; z-index: 5;
+    background: var(--page); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 10px; font-size: 12.5px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.14); opacity: 0; transition: opacity .08s;
+    line-height: 1.5;
+  }
+  .tooltip b { font-variant-numeric: tabular-nums; }
+
+  .traj-legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--ink-2); margin: 6px 0 4px; }
+  .traj-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 6px; }
+  caption.exit-copy { caption-side: top; text-align: left; font-size: 12px; color: var(--ink-2); padding-bottom: 6px; }
+  th, td { text-align: right; padding: 5px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 550; }
+  td:first-child, th:first-child { text-align: left; }
+  tbody tr:hover { background: color-mix(in srgb, var(--even) 8%, transparent); }
+  .wrap4 { max-height: 260px; overflow: auto; }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="viz-root" id="root">
+  <header>
+    <div>
+      <h1>Гипотеза Коллатца — время остановки</h1>
+      <p class="sub">
+        Для каждого <b>n</b> из диапазона [1, N] показано число шагов до 1
+        (если чётное —  n/2, если нечётное —  3n+1). Гипотеза утверждает, что любое
+        n&nbsp;≥&nbsp;1 в итоге приходит к 1. Наведите на точку — узнаете n и число шагов,
+        кликните — увидите траекторию.
+      </p>
+    </div>
+    <button class="theme-toggle" id="themeBtn" type="button">Сменить тему</button>
+  </header>
+
+  <div class="controls">
+    <label>Максимальное число диапазона (N)
+      <input type="number" id="nInput" min="10" max="200000" step="1" value="2000">
+    </label>
+    <button class="btn" id="buildBtn" type="button">Построить</button>
+    <span class="hint">от 10 до 200 000</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Чисел в диапазоне</div><div class="v" id="stCount">–</div></div>
+    <div class="stat"><div class="k">Рекорд: шагов</div><div class="v" id="stMax">–</div></div>
+    <div class="stat"><div class="k">при n =</div><div class="v" id="stMaxN">–</div></div>
+    <div class="stat"><div class="k">Макс. значение ряда</div><div class="v" id="stVal">–</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Время остановки T(n)</h2>
+    <div class="svg-wrap" id="scatterWrap">
+      <svg id="scatter" viewBox="0 0 1000 440" role="img" aria-label="Точечный график времени остановки по числу n">
+      </svg>
+      <div class="tooltip" id="tt"></div>
+    </div>
+    <div class="scalebar">
+      <span class="scale-label">Шагов до 1</span>
+      <span class="scale-min" id="sMin">0</span>
+      <div class="scale-track" aria-hidden="true"></div>
+      <span class="scale-max" id="sMax">0</span>
+    </div>
+    <p class="note">Цвет точки — число шагов (чем темнее, тем дольше). Клик — траектория ниже.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Траектория числа <span id="trajN">–</span></h2>
+    <p class="note" id="trajNote">Кликните по точке на графике выше или введите число ниже, чтобы увидеть путь до 1 (для отрицательных — до цикла).</p>
+    <div class="controls" style="margin:0 0 12px;padding:10px;gap:10px">
+      <label>Показать траекторию числа
+        <input type="number" id="trajInput" min="-1000000" step="1" value="27">
+      </label>
+      <button class="btn" id="trajBtn" type="button">Показать</button>
+    </div>
+    <div class="traj-legend">
+      <span><span class="dot" style="background:var(--even)"></span>чётное — n/2</span>
+      <span><span class="dot" style="background:var(--odd)"></span>нечётное — 3n+1</span>
+    </div>
+    <div class="svg-wrap">
+      <svg id="traj" viewBox="0 0 1000 320" role="img" aria-label="График значений траектории по шагам"></svg>
+    </div>
+    <div class="wrap4">
+      <table id="trajTable">
+        <caption class="exit-copy" id="trajTableCap"></caption>
+        <thead><tr><th>шаг</th><th>значение</th></tr></thead>
+        <tbody id="trajTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="foot">Данные вычисляются мгновенно на лету с кэшированием. Гипотеза проверена для всех
+    рассчитанных n — каждый ряд завершился четвёркой 4 → 2 → 1.</p>
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById('root');
+
+  /* ---------- тема ---------- */
+  const themeBtn = document.getElementById('themeBtn');
+  // CSS-селекторы тем смотрят на data-theme элемента <html> (:root),
+  // поэтому ставим атрибут на documentElement, а не на .viz-root.
+  function applyTheme(mode){ document.documentElement.dataset.theme = mode; themeBtn.textContent = mode === 'dark' ? 'Светлая тема' : 'Тёмная тема'; }
+  themeBtn.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+
+  /* ---------- Collatz ---------- */
+  const memo = new Map();
+  function stepsTo1(n0){
+    let n = n0, k = 0, peak = n0;
+    const seen = [n0];
+    if (memo.has(n0)) return { len: memo.get(n0).len, seq: memo.get(n0).seq, peak: memo.get(n0).peak };
+    while (n !== 1) {
+      if (memo.has(n)) {
+        const m = memo.get(n);
+        k += m.len; peak = Math.max(peak, m.peak);
+        const tail = m.seq.slice(1);
+        for (let i = 0; i < tail.length; i++) { seen.push(tail[i]); peak = Math.max(peak, tail[i]); }
+        break;
+      }
+      if (n % 2 === 0) n = n / 2; else n = 3 * n + 1;
+      seen.push(n); peak = Math.max(peak, n); k++;
+    }
+    const rec = { len: k, seq: seen, peak };
+    memo.set(n0, rec);
+    return rec;
+  }
+
+  /* ---------- sequential ramp (синяя, 12 ступеней из палитры) ---------- */
+  const RAMP = ['#cde2fb','#b7d3f6','#9ec5f4','#86b6ef','#6da7ec','#5598e7',
+                '#3987e5','#2a78d6','#256abf','#1c5cab','#184f95','#0d366b'];
+
+  /* ---------- главный scatter ---------- */
+  const SVC = document.getElementById('scatter');
+  const WRAP = document.getElementById('scatterWrap');
+  const tt = document.getElementById('tt');
+  const NS = { width: 1000, height: 440, pad: { l: 62, r: 18, t: 18, b: 42 } };
+  let curData = [];           // [{n, steps, peak}]
+  let xAt = n => NS.pad.l + (n - 1) / (curData.length - 1 || 1) * (NS.width - NS.pad.l - NS.pad.r);
+
+  function buildScatter(){
+    const Nval = Number(document.getElementById('nInput').value);
+    const N = Math.max(10, Math.min(200000, Math.round(Nval) || 2000));
+    document.getElementById('nInput').value = N;
+
+    const data = new Array(N);
+    let maxSteps = 0, maxN = 0, maxPeak = 0, sum = 0;
+    for (let n = 1; n <= N; n++) {
+      const r = stepsTo1(n);
+      const s = r.len;
+      data[n - 1] = { n, steps: s, peak: r.peak };
+      sum += s;
+      if (s > maxSteps) { maxSteps = s; maxN = n; }
+      if (r.peak > maxPeak) maxPeak = r.peak;
+    }
+    curData = data;
+
+    document.getElementById('stCount').textContent = String(N);
+    document.getElementById('stMax').textContent = String(maxSteps);
+    document.getElementById('stMaxN').textContent = String(maxN);
+    document.getElementById('stVal').textContent = maxPeak.toLocaleString('ru-RU');
+    document.getElementById('sMin').textContent = '1';
+    document.getElementById('sMax').textContent = String(maxSteps);
+
+    const W = NS.width - NS.pad.l - NS.pad.r;
+    const H = NS.height - NS.pad.t - NS.pad.b;
+    const yAt = v => NS.pad.t + H - (v / maxSteps) * H;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    /* сетка + оси */
+    const ticksY = niceTicks(0, maxSteps, 4);
+    ticksY.forEach(t => {
+      const y = yAt(t);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('class','grid-line');
+      line.setAttribute('x1', NS.pad.l); line.setAttribute('x2', NS.width - NS.pad.r);
+      line.setAttribute('y1', y); line.setAttribute('y2', y);
+      g.appendChild(line);
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', NS.pad.l - 8); txt.setAttribute('y', y + 4);
+      txt.setAttribute('text-anchor','end'); txt.setAttribute('class','axis');
+      txt.textContent = String(t);
+      g.appendChild(txt);
+    });
+    /* ось X */
+    const xTicks = 5;
+    for (let i = 0; i <= xTicks; i++){
+      const v = 1 + Math.round(i / xTicks * (N - 1));
+      const x = xAt(v);
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', x); txt.setAttribute('y', NS.height - 12);
+      txt.setAttribute('text-anchor','middle'); txt.setAttribute('class','axis');
+      txt.textContent = String(v);
+      g.appendChild(txt);
+    }
+    const yl = document.createElementNS('http://www.w3.org/2000/svg','text');
+    yl.setAttribute('x', 14); yl.setAttribute('y', NS.pad.t + H/2); yl.setAttribute('class','axis-label');
+    yl.setAttribute('transform', 'rotate(-90 14 ' + (NS.pad.t + H/2) + ')');
+    yl.setAttribute('text-anchor','middle'); yl.textContent = 'Число шагов T(n)';
+    g.appendChild(yl);
+    const xl = document.createElementNS('http://www.w3.org/2000/svg','text');
+    xl.setAttribute('x', NS.pad.l + W/2); xl.setAttribute('y', NS.height - 28);
+    xl.setAttribute('text-anchor','middle'); xl.setAttribute('class','axis-label'); xl.textContent = 'Начальное число n';
+    g.appendChild(xl);
+
+    /* точки: полилинии по цветовым корзинам */
+    const paths = new Array(RAMP.length).fill().map(() => []);
+    for (const d of data) {
+      const x = xAt(d.n);
+      const y = yAt(d.steps);
+      const t = maxSteps > 1 ? (d.steps - 1) / (maxSteps - 1) : 0;
+      let bi = Math.round(t * (RAMP.length - 1));
+      if (bi < 0) bi = 0; if (bi >= RAMP.length) bi = RAMP.length - 1;
+      paths[bi].push('M' + x.toFixed(1) + ',' + y.toFixed(1) + 'z');
+    }
+    paths.forEach((segs, bi) => {
+      const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('d', segs.join(''));
+      p.setAttribute('fill','none'); p.setAttribute('stroke', RAMP[bi]);
+      p.setAttribute('stroke-width','3'); p.setAttribute('stroke-linecap','round');
+      p.setAttribute('opacity', bi === 0 ? 0.85 : 1);
+      g.appendChild(p);
+    });
+
+    const prev = SVC.querySelector('g'); if (prev) SVC.removeChild(prev);
+    SVC.appendChild(g);
+  }
+
+  function niceTicks(min, max, count){
+    const span = max - min || 1;
+    const step0 = span / count;
+    const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const norm = step0 / mag;
+    const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    const out = [];
+    for (let v = Math.ceil(min/step)*step; v <= max + 1e-9; v += step) out.push(Math.round(v));
+    return out;
+  }
+
+  /* ---------- hover ---------- */
+  WRAP.addEventListener('mousemove', e => {
+    const rect = SVC.getBoundingClientRect();
+    const fx = (e.clientX - rect.left) / rect.width;
+    const fxm = NS.pad.l / NS.width;
+    const fxw = (NS.width - NS.pad.l - NS.pad.r) / NS.width;
+    const frac = (fx - fxm) / fxw;
+    if (frac < 0 || frac > 1 || !curData.length) { hide(); return; }
+    const n = Math.round(1 + frac * (curData.length - 1));
+    const d = curData[n - 1];
+    if (!d) { hide(); return; }
+    /* позиция тултипа над точкой */
+    const px = NS.pad.l + (n - 1) / (curData.length - 1 || 1) * (NS.width - NS.pad.l - NS.pad.r);
+    const py = NS.pad.t + (NS.height - NS.pad.t - NS.pad.b) * (1 - d.steps / (Number(document.getElementById('sMax').textContent) || 1));
+    const sx = px / NS.width * rect.width + rect.left;
+    const sy = py / NS.height * rect.height + rect.top;
+    tt.style.left = (sx - rect.left + 14) + 'px';
+    tt.style.top  = (sy - rect.top - 8) + 'px';
+    tt.style.opacity = '1';
+    tt.innerHTML = 'n = <b>' + d.n + '</b><br>шагов = <b>' + d.steps + '</b><br>макс. значение = ' + d.peak.toLocaleString('ru-RU');
+  });
+  WRAP.addEventListener('mouseleave', hide);
+  function hide(){ tt.style.opacity = '0'; }
+
+  WRAP.addEventListener('click', e => {
+    const rect = SVC.getBoundingClientRect();
+    const fx = (e.clientX - rect.left) / rect.width;
+    const fxm = NS.pad.l / NS.width;
+    const fxw = (NS.width - NS.pad.l - NS.pad.r) / NS.width;
+    const frac = (fx - fxm) / fxw;
+    if (frac < 0 || frac > 1 || !curData.length) return;
+    const n = Math.round(1 + frac * (curData.length - 1));
+    showTraj(n);
+  });
+
+  /* ---------- траектория ---------- */
+  const TJ = document.getElementById('traj');
+  function trajNegSeq(n0){
+    // для неположительных n цепочка не приходит к 1, а зацикливается:
+    // находим первое повторяющееся значение — это начало цикла.
+    const seen = new Map();
+    const seq = [];
+    let n = n0, peak = n0, lo = n0;
+    const cap = 2000000;
+    while (true) {
+      if (seen.has(n)) return { seq, cycleStart: seen.get(n), peak, lo, isCycle: true };
+      seen.set(n, seq.length); seq.push(n);
+      if (n > peak) peak = n; if (n < lo) lo = n;
+      if (seq.length >= cap) return { seq, cycleStart: -1, peak, lo, isCycle: false };
+      n = (n % 2 === 0) ? n / 2 : 3 * n + 1;
+    }
+  }
+
+  function showTraj(n0Raw){
+    let n0 = Math.round(n0Raw);
+    if (!Number.isFinite(n0)) n0 = 27;
+    document.getElementById('trajInput').value = n0;
+
+    const isPos = n0 > 0;
+    const r = isPos ? stepsTo1(n0) : trajNegSeq(n0);
+    const seq = r.seq, L = seq.length;
+
+    document.getElementById('trajN').textContent = String(n0);
+    let note;
+    if (isPos) {
+      note = 'Серия из ' + L + ' значений (включая 1), максимум ' + r.peak.toLocaleString('ru-RU') +
+             ', шагов до 1 = ' + r.len + '.';
+    } else if (r.isCycle) {
+      const cellen = L - r.cycleStart;
+      const cyc = seq.slice(r.cycleStart).slice(0, 12).join(' → ') + (cellen > 12 ? ' …' : '');
+      note = 'Ряд из ' + L + ' значений: для отрицательных чисел процесс не приходит к 1, а зацикливается. ' +
+             'На шаге ' + r.cycleStart + ' начинается цикл длины ' + cellen +
+             ' (' + cyc + '). Значения от ' + r.lo + ' до ' + r.peak + '.';
+    } else {
+      note = 'Ряд из ' + L + ' значений числа ' + n0 +
+             ' (вычисление оборвано по пределу в ' + 2000000 + ' шагов; для отрицательных чисел цепочка, как правило, зацикливается).';
+    }
+    document.getElementById('trajNote').textContent = note;
+
+    const W = 1000, H = 320, pl = 60, pr = 20, pt = 18, pb = 40;
+    const iw = W - pl - pr, ih = H - pt - pb;
+    let maxV, minV, yAt, marks, markLabel;
+    if (isPos) {
+      maxV = r.peak; minV = 1;
+      yAt = v => pt + ih - (maxV > 1 ? Math.log(v) / Math.log(maxV) : 1) * ih;
+      marks = [];
+      for (let v = 1; v <= maxV; v *= 10) marks.push(v);
+      markLabel = v => v === 1 ? '1' : '10^' + Math.round(Math.log10(v));
+    } else {
+      minV = r.lo; maxV = r.peak;
+      yAt = v => pt + ih - (maxV === minV ? 0.5 : (v - minV) / (maxV - minV)) * ih;
+      marks = niceTicks(minV, maxV, 4).filter(v => v >= minV && v <= maxV);
+      markLabel = v => String(v);
+    }
+    const xAt = i => pl + i / (L - 1 || 1) * iw;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+
+    /* отметка начала цикла для отрицательных чисел */
+    if (!isPos && r.isCycle) {
+      const cx = xAt(r.cycleStart);
+      const cl = document.createElementNS('http://www.w3.org/2000/svg','line');
+      cl.setAttribute('class','grid-line');
+      cl.setAttribute('x1', cx); cl.setAttribute('x2', cx); cl.setAttribute('y1', pt); cl.setAttribute('y2', H - pb);
+      g.appendChild(cl);
+      const clt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      clt.setAttribute('x', cx + 6); clt.setAttribute('y', pt + 14); clt.setAttribute('class','axis');
+      clt.textContent = 'цикл';
+      g.appendChild(clt);
+    }
+
+    /* тики y: лог-шкала для положительных, линейная для отрицательных */
+    marks.forEach(v => {
+      const y = yAt(v);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('class','grid-line');
+      line.setAttribute('x1', pl); line.setAttribute('x2', W - pr); line.setAttribute('y1', y); line.setAttribute('y2', y);
+      g.appendChild(line);
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', pl - 8); txt.setAttribute('y', y + 4); txt.setAttribute('class','axis');
+      txt.setAttribute('text-anchor','end'); txt.textContent = markLabel(v);
+      g.appendChild(txt);
+    });
+    /* ось X */
+    for (let i = 0; i < L; i += Math.max(1, Math.floor(L / 6))) {
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x', xAt(i)); txt.setAttribute('y', H - 12); txt.setAttribute('class','axis');
+      txt.setAttribute('text-anchor','middle'); txt.textContent = String(i);
+      g.appendChild(txt);
+    }
+    const yl = document.createElementNS('http://www.w3.org/2000/svg','text');
+    yl.setAttribute('x', 14); yl.setAttribute('y', pt+ih/2); yl.setAttribute('class','axis-label');
+    yl.setAttribute('transform','rotate(-90 14 ' + (pt+ih/2) + ')'); yl.setAttribute('text-anchor','middle');
+    yl.textContent = 'Значение (лог. шкала)'; g.appendChild(yl);
+    const xl = document.createElementNS('http://www.w3.org/2000/svg','text');
+    xl.setAttribute('x', pl+iw/2); xl.setAttribute('y', H-26); xl.setAttribute('text-anchor','middle');
+    xl.setAttribute('class','axis-label'); xl.textContent = 'Номер шага'; g.appendChild(xl);
+
+    /* соединительная линия */
+    let d = '';
+    for (let i = 0; i < L; i++) d += (i ? 'L' : 'M') + xAt(i).toFixed(1) + ',' + yAt(seq[i]).toFixed(1) + ' ';
+    const poly = document.createElementNS('http://www.w3.org/2000/svg','path');
+    poly.setAttribute('d', d); poly.setAttribute('fill','none'); poly.setAttribute('stroke','var(--baseline)');
+    poly.setAttribute('stroke-width','1.5'); g.appendChild(poly);
+
+    /* точки по чётности */
+    const groups = {};
+    seq.forEach((v, i) => {
+      const parity = v % 2 === 0 ? 'even' : 'odd';
+      (groups[parity] = groups[parity] || []).push('M' + xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1) + 'z');
+    });
+    ['even','odd'].forEach(p => {
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d', (groups[p]||[]).join(''));
+      path.setAttribute('fill','none'); path.setAttribute('stroke', 'var(--' + p + ')');
+      path.setAttribute('stroke-width','5'); path.setAttribute('stroke-linecap','round');
+      g.appendChild(path);
+    });
+
+    const prev = TJ.querySelector('g'); if (prev) TJ.removeChild(prev);
+    TJ.appendChild(g);
+
+    /* таблица */
+    const tblBody = document.getElementById('trajTableBody');
+    tblBody.innerHTML = '';
+    seq.slice(0, 500).forEach((v, i) => {
+      const tr = document.createElement('tr');
+      const td1 = document.createElement('td'); td1.textContent = String(i);
+      const td2 = document.createElement('td'); td2.textContent = v.toLocaleString('ru-RU');
+      tr.appendChild(td1); tr.appendChild(td2); tblBody.appendChild(tr);
+    });
+    const capFirst = L > 500 ? 'Первые 500 из ' + L + ' значений' : 'Все ' + L + ' значений';
+    document.getElementById('trajTableCap').textContent =
+      capFirst + ' числа ' + n0 + (isPos ? ': ' : ' (цикл — после серой линии): ') + seq.join(' → ');
+  }
+
+  document.getElementById('trajBtn').addEventListener('click', () => showTraj(document.getElementById('trajInput').value));
+  document.getElementById('trajInput').addEventListener('keydown', e => { if (e.key === 'Enter') showTraj(e.target.value); });
+
+  /* ---------- init ---------- */
+  document.getElementById('buildBtn').addEventListener('click', buildScatter);
+  document.getElementById('nInput').addEventListener('keydown', e => { if (e.key === 'Enter') buildScatter(); });
+  buildScatter();
+  showTraj(27);
+})();
+</script>
+</body>
+</html>
